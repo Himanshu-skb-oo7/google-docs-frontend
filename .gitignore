@@ -1,0 +1,48 @@
+# Ignore node_modules directory
+node_modules/
+
+# Ignore build output
+build/
+
+# Ignore development server cache
+.cache/
+
+# Ignore .env files (if you use environment variables)
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Ignore log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignore dependency lock files
+package-lock.json
+yarn.lock
+
+# Ignore production build files
+/dist
+
+# Ignore editor and IDE files
+.vscode/
+.idea/
+
+# Ignore macOS specific files
+.DS_Store
+
+# Ignore testing snapshots
+/__snapshots__/
+
+# Ignore coverage reports
+/coverage/
+
+# Ignore build and lint cache
+/.eslintcache
+/.eslintresults
+
+# Ignore compiled output from Typescript
+*.tsbuildinfo
+
+# Optionally, you might want to include other custom ignores here, such as editor-specific files or temporary files created during development.

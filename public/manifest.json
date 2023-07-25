@@ -1,0 +1,20 @@
+{
+  "short_name": "Google Docs",
+  "name": "Google Docs",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x128 32x64 24x48 16x32",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "512x1024"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
