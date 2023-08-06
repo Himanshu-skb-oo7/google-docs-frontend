@@ -9,6 +9,8 @@
     "@testing-library/user-event": "^13.5.0",
     "axios": "^1.4.0",
     "draft-js": "^0.11.7",
+    "lodash-es": "^4.17.21",
+    "lodash.throttle": "^4.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.14.2",
@@ -16,7 +18,8 @@
     "slate": "^0.94.1",
     "slate-history": "^0.93.0",
     "slate-react": "^0.97.2",
-    "web-vitals": "^2.1.4"
+    "web-vitals": "^2.1.4",
+    "yjs": "^13.6.7"
   },
   "scripts": {
     "start": "react-scripts start",

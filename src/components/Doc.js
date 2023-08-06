@@ -1,25 +1,26 @@
-import React, { useCallback, useMemo, useEffect, useState, useRef } from "react";
+import React, { useCallback, useMemo, useEffect, useState, useRef, version } from "react";
 import isHotkey from "is-hotkey";
 import { Editable, withReact, useSlate, Slate } from "slate-react";
 import { Editor, Transforms, createEditor, Element as SlateElement } from "slate";
 import { withHistory } from "slate-history";
+import throttle from "lodash.throttle";
+import axiosInstance from "../api/axiosConfig";
+import { AUTH_TOKEN } from "../api/apiConstants";
 
 import { Button, Icon, Toolbar } from "./SlateComponents";
 
+const YOUR_USER_ID = AUTH_TOKEN;
+
 //Get doc content
 const getDocContent = async (doc_id) => {
-  const endpoint = "http://127.0.0.1:8000/doc/" + doc_id + "/";
-  return await fetch(endpoint, {
-    method: "GET",
-    headers: {
-      "Content-Type": "application/json",
-    },
-  })
-    .then((response) => response.json())
-    .then((data) => {
-      return data;
-    })
-    .catch((error) => console.log(error));
+  const endpoint = `/doc/${doc_id}/`;
+
+  try {
+    const response = await axiosInstance.get(endpoint);
+    return response.data;
+  } catch (error) {
+    return null;
+  }
 };
 
 // Update doc content in DB
@@ -33,8 +34,10 @@ const updateDoc = async (doc_id, doc_content) => {
   };
   return fetch(endpoint, requestOptions)
     .then((response) => response.json())
-    .then((data) => console.log("Update Successfull"));
+    .then((data) => {});
 };
+
+const throttledUpdateDoc = throttle(updateDoc, 1000);
 
 const HOTKEYS = {
   "mod+b": "bold",
@@ -48,48 +51,69 @@ const TEXT_ALIGN_TYPES = ["left", "center", "right", "justify"];
 
 const Doc = ({ id }) => {
   const [content, setContent] = useState("");
+  const [version, setVersion] = useState(0); // Add version state
+  const lastReceivedContentRef = useRef("");
+  const isLocalChangeRef = useRef(false); // Ref to track local changes
+
+  //const [isLocalChange, setIsLocalChange] = useState(true);
   const wsRef = useRef(null);
+  const editor = useMemo(() => withHistory(withReact(createEditor())), []);
+
+  const sendDataViaWebSocket = (change, content, version) => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      const data = {
+        change: change,
+        content: content,
+        version: version, // Include the version in the data
+      };
+      wsRef.current.send(JSON.stringify(data));
+    }
+  };
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://127.0.0.1:8000/ws/doc/` + id + "/");
+    const ws = new WebSocket(`ws://127.0.0.1:8000/ws/doc/${id}/?user_id=${YOUR_USER_ID}`);
 
     ws.onopen = function (event) {
-      console.log("opened", event);
       wsRef.current = ws;
     };
 
     ws.onclose = function (e) {
-      console.error("Chat socket closed unexpectedly; reconnecting");
+      wsRef.current = null;
     };
 
-    ws.onerror = function (event) {
-      console.log("error", event);
-    };
+    ws.onerror = function (event) {};
 
     ws.onmessage = function (event) {
       const data = JSON.parse(event.data);
-      setContent(data.content);
+
+      if (editor.selection) {
+        const isLocalChange = data.user_id === YOUR_USER_ID;
+        if (!isLocalChange) {
+          const currentContent = JSON.stringify(editor.children);
+          const remoteValue = JSON.parse(currentContent);
+          applyRemoteChange(editor, remoteValue, data.change);
+          lastReceivedContentRef.current = data.content;
+          setVersion(data.version); // Update the local version number
+          isLocalChangeRef.current = isLocalChange;
+        }
+      }
     };
-    return () => {
-      console.log("CLOSING ");
-      updateDoc(id, content);
-      ws.close();
-    };
+
+    return () => {};
   }, []);
 
   useEffect(() => {
     getDocContent(id)
       .then((res) => {
         setContent(res.content);
+        setVersion(res.version);
       })
-      .catch((e) => {
-        console.log(e.message);
-      });
+      .catch((e) => {});
   }, []);
 
   const renderElement = useCallback((props) => <Element {...props} />, []);
   const renderLeaf = useCallback((props) => <Leaf {...props} />, []);
-  const editor = useMemo(() => withHistory(withReact(createEditor())), []);
+
   const initialValue = [
     {
       type: "paragraph",
@@ -97,31 +121,26 @@ const Doc = ({ id }) => {
     },
   ];
 
-  return (
-    <Slate
-      editor={editor}
-      initialValue={initialValue}
-      key={content}
-      onChange={(currTextContent) => {
-        var fullContent = "";
+  const slateOnChange = useCallback(
+    (currTextContent) => {
+      var fullContent = currTextContent
+        .map((elements) => elements.children.map((child) => child.text).join(""))
+        .join("\n");
 
-        currTextContent.forEach((elements) => {
-          elements.children.forEach((child) => {
-            fullContent += child.text;
-          });
-        });
-
-        const data = {
-          id: id,
-          content: fullContent,
-        };
-
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify(data));
-          updateDoc(id, fullContent);
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        if (isLocalChangeRef.current) {
+          sendDataViaWebSocket(editor.operations, fullContent, version);
+          throttledUpdateDoc(id, fullContent)
+            .then((response) => {})
+            .catch((error) => {});
         }
-      }}
-    >
+      }
+    },
+    [] // Add version as a dependency
+  );
+
+  return (
+    <Slate editor={editor} initialValue={initialValue} key={content} onChange={slateOnChange}>
       <Toolbar>
         <MarkButton format="bold" icon="format_bold" />
         <MarkButton format="italic" icon="format_italic" />
@@ -144,6 +163,8 @@ const Doc = ({ id }) => {
         spellCheck
         autoFocus
         onKeyDown={(event) => {
+          isLocalChangeRef.current = true;
+          setVersion(version + 1);
           for (const hotkey in HOTKEYS) {
             if (isHotkey(hotkey, event)) {
               event.preventDefault();
@@ -155,6 +176,35 @@ const Doc = ({ id }) => {
       />
     </Slate>
   );
+};
+
+const applyRemoteChange = (editor, remoteValue, change) => {
+  Editor.withoutNormalizing(editor, () => {
+    change.forEach((operation) => {
+      const { type, path, offset, text } = operation;
+      const point = { path, offset };
+      switch (type) {
+        case "insert_text":
+          Transforms.insertText(editor, text, { at: point });
+          break;
+        case "remove_text":
+          Transforms.delete(editor, { at: point, distance: offset });
+          break;
+        case "set_selection":
+          const { anchor, focus } = operation.newProperties;
+          remoteValue.selection = { anchor, focus };
+          break;
+        case "split_node":
+          const newPath = path.slice(0, path.length - 1); // Create a new array excluding the last index
+          const newIndex = path[path.length - 1] + 1; // Calculate the new index for the split node
+          const newNode = { ...Editor.node(editor, path)[0], children: [] }; // Create a new node with no children
+          Transforms.insertNodes(editor, newNode, { at: [...newPath, newIndex] }); // Insert the new node at the calculated
+          break;
+        default:
+          break;
+      }
+    });
+  });
 };
 
 const toggleBlock = (editor, format) => {
