@@ -188,7 +188,15 @@ const applyRemoteChange = (editor, remoteValue, change) => {
           Transforms.insertText(editor, text, { at: point });
           break;
         case "remove_text":
-          Transforms.delete(editor, { at: point, distance: offset });
+          try {
+            Transforms.delete(editor, {
+              at: {
+                anchor: { path: path, offset: offset },
+                focus: { path: path, offset: offset },
+              },
+              distance: text.length,
+            });
+          } catch (e) {}
           break;
         case "set_selection":
           const { anchor, focus } = operation.newProperties;
@@ -199,6 +207,30 @@ const applyRemoteChange = (editor, remoteValue, change) => {
           const newIndex = path[path.length - 1] + 1; // Calculate the new index for the split node
           const newNode = { ...Editor.node(editor, path)[0], children: [] }; // Create a new node with no children
           Transforms.insertNodes(editor, newNode, { at: [...newPath, newIndex] }); // Insert the new node at the calculated
+          break;
+        case "set_node":
+          // The set_node operation updates the properties of a node
+          Transforms.setNodes(editor, operation.newProperties, { at: path });
+          break;
+        case "remove_node":
+          if (editor.children.length === 0) {
+            Transforms.insertNodes(editor, { type: "paragraph", children: [{ text: "" }] }, { at: [0], select: true });
+            return;
+          }
+
+          if (editor.children.length === 1) {
+            Transforms.delete(editor, {
+              at: {
+                anchor: { path: path, offset: offset },
+                focus: { path: path, offset: offset },
+              },
+              distance: editor.children[0].text,
+            });
+            return;
+          }
+
+          const nodePoint = { path };
+          Transforms.removeNodes(editor, { at: nodePoint });
           break;
         default:
           break;
