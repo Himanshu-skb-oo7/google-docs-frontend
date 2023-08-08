@@ -181,60 +181,7 @@ const Doc = ({ id }) => {
 const applyRemoteChange = (editor, remoteValue, change) => {
   Editor.withoutNormalizing(editor, () => {
     change.forEach((operation) => {
-      const { type, path, offset, text } = operation;
-      const point = { path, offset };
-      switch (type) {
-        case "insert_text":
-          Transforms.insertText(editor, text, { at: point });
-          break;
-        case "remove_text":
-          try {
-            Transforms.delete(editor, {
-              at: {
-                anchor: { path: path, offset: offset },
-                focus: { path: path, offset: offset },
-              },
-              distance: text.length,
-            });
-          } catch (e) {}
-          break;
-        case "set_selection":
-          const { anchor, focus } = operation.newProperties;
-          remoteValue.selection = { anchor, focus };
-          break;
-        case "split_node":
-          const newPath = path.slice(0, path.length - 1); // Create a new array excluding the last index
-          const newIndex = path[path.length - 1] + 1; // Calculate the new index for the split node
-          const newNode = { ...Editor.node(editor, path)[0], children: [] }; // Create a new node with no children
-          Transforms.insertNodes(editor, newNode, { at: [...newPath, newIndex] }); // Insert the new node at the calculated
-          break;
-        case "set_node":
-          // The set_node operation updates the properties of a node
-          Transforms.setNodes(editor, operation.newProperties, { at: path });
-          break;
-        case "remove_node":
-          if (editor.children.length === 0) {
-            Transforms.insertNodes(editor, { type: "paragraph", children: [{ text: "" }] }, { at: [0], select: true });
-            return;
-          }
-
-          if (editor.children.length === 1) {
-            Transforms.delete(editor, {
-              at: {
-                anchor: { path: path, offset: offset },
-                focus: { path: path, offset: offset },
-              },
-              distance: editor.children[0].text,
-            });
-            return;
-          }
-
-          const nodePoint = { path };
-          Transforms.removeNodes(editor, { at: nodePoint });
-          break;
-        default:
-          break;
-      }
+      editor.apply(operation);
     });
   });
 };
