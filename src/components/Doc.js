@@ -51,7 +51,6 @@ const TEXT_ALIGN_TYPES = ["left", "center", "right", "justify"];
 
 const Doc = ({ id }) => {
   const [content, setContent] = useState("");
-  const [version, setVersion] = useState(0); // Add version state
   const lastReceivedContentRef = useRef("");
   const isLocalChangeRef = useRef(false); // Ref to track local changes
 
@@ -59,12 +58,11 @@ const Doc = ({ id }) => {
   const wsRef = useRef(null);
   const editor = useMemo(() => withHistory(withReact(createEditor())), []);
 
-  const sendDataViaWebSocket = (change, content, version) => {
+  const sendDataViaWebSocket = (change, content) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       const data = {
         change: change,
         content: content,
-        version: version, // Include the version in the data
       };
       wsRef.current.send(JSON.stringify(data));
     }
@@ -93,7 +91,6 @@ const Doc = ({ id }) => {
           const remoteValue = JSON.parse(currentContent);
           applyRemoteChange(editor, remoteValue, data.change);
           lastReceivedContentRef.current = data.content;
-          setVersion(data.version); // Update the local version number
           isLocalChangeRef.current = isLocalChange;
         }
       }
@@ -106,7 +103,6 @@ const Doc = ({ id }) => {
     getDocContent(id)
       .then((res) => {
         setContent(res.content);
-        setVersion(res.version);
       })
       .catch((e) => {});
   }, []);
@@ -121,23 +117,20 @@ const Doc = ({ id }) => {
     },
   ];
 
-  const slateOnChange = useCallback(
-    (currTextContent) => {
-      var fullContent = currTextContent
-        .map((elements) => elements.children.map((child) => child.text).join(""))
-        .join("\n");
+  const slateOnChange = useCallback((currTextContent) => {
+    var fullContent = currTextContent
+      .map((elements) => elements.children.map((child) => child.text).join(""))
+      .join("\n");
 
-      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        if (isLocalChangeRef.current) {
-          sendDataViaWebSocket(editor.operations, fullContent, version);
-          throttledUpdateDoc(id, fullContent)
-            .then((response) => {})
-            .catch((error) => {});
-        }
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      if (isLocalChangeRef.current) {
+        sendDataViaWebSocket(editor.operations, fullContent);
+        throttledUpdateDoc(id, fullContent)
+          .then((response) => {})
+          .catch((error) => {});
       }
-    },
-    [] // Add version as a dependency
-  );
+    }
+  }, []);
 
   return (
     <Slate editor={editor} initialValue={initialValue} key={content} onChange={slateOnChange}>
@@ -164,7 +157,6 @@ const Doc = ({ id }) => {
         autoFocus
         onKeyDown={(event) => {
           isLocalChangeRef.current = true;
-          setVersion(version + 1);
           for (const hotkey in HOTKEYS) {
             if (isHotkey(hotkey, event)) {
               event.preventDefault();
