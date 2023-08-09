@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useEffect, useState, useRef, version } from "react";
 import isHotkey from "is-hotkey";
 import { Editable, withReact, useSlate, Slate } from "slate-react";
-import { Editor, Transforms, createEditor, Element as SlateElement } from "slate";
+import { Editor, Transforms, createEditor, Element as SlateElement, end } from "slate";
 import { withHistory } from "slate-history";
 import throttle from "lodash.throttle";
 import axiosInstance from "../api/axiosConfig";
@@ -25,16 +25,14 @@ const getDocContent = async (doc_id) => {
 
 // Update doc content in DB
 const updateDoc = async (doc_id, doc_content) => {
-  const endpoint = "http://127.0.0.1:8000/doc/" + doc_id + "/";
+  const endpoint = "http://127.0.0.1:8000/doc/update/" + doc_id + "/";
 
-  const requestOptions = {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: doc_id, content: doc_content }),
-  };
-  return fetch(endpoint, requestOptions)
-    .then((response) => response.json())
-    .then((data) => {});
+  try {
+    var response = await axiosInstance.put(endpoint, { id: doc_id, content: doc_content });
+    return response.data;
+  } catch (error) {
+    return null;
+  }
 };
 
 const throttledUpdateDoc = throttle(updateDoc, 1000);
@@ -51,6 +49,9 @@ const TEXT_ALIGN_TYPES = ["left", "center", "right", "justify"];
 
 const Doc = ({ id }) => {
   const [content, setContent] = useState("");
+  const [shareEmail, setShareEmail] = useState("");
+  const [clipboardSuccess, setClipboardSuccess] = useState("");
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const lastReceivedContentRef = useRef("");
   const isLocalChangeRef = useRef(false); // Ref to track local changes
 
@@ -125,12 +126,40 @@ const Doc = ({ id }) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       if (isLocalChangeRef.current) {
         sendDataViaWebSocket(editor.operations, fullContent);
-        throttledUpdateDoc(id, fullContent)
-          .then((response) => {})
-          .catch((error) => {});
+        throttledUpdateDoc(id, fullContent);
       }
     }
   }, []);
+
+  const shareLink = async (email) => {
+    const endpoint = `/doc/update/${id}/`;
+
+    try {
+      const response = await axiosInstance.put(endpoint, { shared_with: email });
+      return response.data;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  const handleShareButtonClick = () => {
+    setShowShareDialog(true);
+  };
+
+  const handleShareSubmit = () => {
+    const documentUrl = `${window.location.origin}/doc/${id}`;
+    navigator.clipboard
+      .writeText(documentUrl)
+      .then(() => {
+        shareLink(shareEmail);
+        setShowShareDialog(false);
+        setShareEmail("");
+        setClipboardSuccess(
+          "Access has been granted to " + shareEmail + ". Shareable link has been copied to clipboard."
+        );
+      })
+      .catch((error) => {});
+  };
 
   return (
     <Slate editor={editor} initialValue={initialValue} key={content} onChange={slateOnChange}>
@@ -149,6 +178,16 @@ const Doc = ({ id }) => {
         <BlockButton format="right" icon="format_align_right" />
         <BlockButton format="justify" icon="format_align_justify" />
       </Toolbar>
+      <Button onClick={handleShareButtonClick} className="text-blue-500 hover:underline">
+        Share
+      </Button>
+      {clipboardSuccess ? (
+        <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="success">
+          <span class="block sm:inline">{clipboardSuccess}</span>
+        </div>
+      ) : (
+        ""
+      )}
       <Editable
         renderElement={renderElement}
         renderLeaf={renderLeaf}
@@ -166,6 +205,31 @@ const Doc = ({ id }) => {
           }
         }}
       />
+      {showShareDialog && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-75">
+          <div className="bg-white p-4 rounded shadow">
+            <h2 className="text-xl font-semibold mb-2">Share Document</h2>
+            <p className="mb-4">Enter the email address to share the document with:</p>
+            <input
+              type="email"
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+              className="border p-2 w-full mb-4"
+            />
+            <div className="flex justify-end">
+              <button
+                onClick={handleShareSubmit}
+                className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600"
+              >
+                Share
+              </button>
+              <button onClick={() => setShowShareDialog(false)} className="ml-2 border px-4 py-2 rounded-md">
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Slate>
   );
 };

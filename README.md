@@ -35,6 +35,5 @@ This is a collaborative text editor application built using SlateJS. It allows m
 
 ## Future Enhancements
 
-- Document sharing: Allow users to share document links for easy collaboration.
 - Additional formatting options: Expand formatting options to include headings, lists, and more.
 - Improved UI/UX: Enhance the user interface for a smoother editing experience.
